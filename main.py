@@ -1,23 +1,19 @@
-import os, json, time, secrets, threading, urllib.request
+import os, json, time, secrets, urllib.request, threading
 import telebot
 from telebot import types
 from datetime import datetime
-from flask import Flask
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "TOKEN_BARU_DISINI")
-ADMIN_ID  = int(os.environ.get("ADMIN_ID", "6847073444"))
+# ============ KONFIGURASI ============
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8846832655:AAEPIpss6Tyk7K83Xy-r3W9yGW7Eq0dSIYI")
+ADMIN_ID  = 6847073444
 FB        = os.environ.get("FB", "https://bot-key-af648-default-rtdb.asia-southeast1.firebasedatabase.app")
 COOLDOWN  = 2 * 86400
+ADMIN_WA  = "6283131220798"
+ADMIN_TG  = "fa_sukamacha"
+CLEANUP_INTERVAL = 6 * 3600
+# =====================================
 
 bot = telebot.TeleBot(BOT_TOKEN)
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "CIPA ONLY VIP - bot alive"
-
-def run_web():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 def fg(p):
     try:
@@ -27,29 +23,28 @@ def fg(p):
 
 def fp(p, d):
     try:
-        r = urllib.request.Request(f"{FB}/{p}.json",
+        req = urllib.request.Request(f"{FB}/{p}.json",
             data=json.dumps(d).encode(), method="PUT",
             headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(r, timeout=10); return True
+        urllib.request.urlopen(req, timeout=10); return True
     except: return False
 
 def fa(p, d):
     try:
-        r = urllib.request.Request(f"{FB}/{p}.json",
+        req = urllib.request.Request(f"{FB}/{p}.json",
             data=json.dumps(d).encode(), method="PATCH",
             headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(r, timeout=10); return True
+        urllib.request.urlopen(req, timeout=10); return True
     except: return False
 
 def fd(p):
     try:
-        r = urllib.request.Request(f"{FB}/{p}.json", method="DELETE")
-        urllib.request.urlopen(r, timeout=10); return True
+        req = urllib.request.Request(f"{FB}/{p}.json", method="DELETE")
+        urllib.request.urlopen(req, timeout=10); return True
     except: return False
 
 def gk(): return f"CIPA-{secrets.token_hex(3).upper()}"
-
-def dr(s):
+def dur(s):
     s = s.lower().strip()
     try:
         if s.endswith("d"): return int(s[:-1]) * 86400
@@ -66,6 +61,32 @@ def mk(sec):
     k = gk(); now = int(time.time() * 1000)
     return k if fp(f"keys/{k}", {"key": k, "expires": now + sec*1000,
         "revoked": False, "hwid": None, "created": now}) else None
+
+def contact_menu():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    if ADMIN_WA:
+        kb.add(types.InlineKeyboardButton("💬 WA Admin", url=f"https://wa.me/{ADMIN_WA}"))
+    if ADMIN_TG:
+        kb.add(types.InlineKeyboardButton("✈️ Telegram Admin", url=f"https://t.me/{ADMIN_TG}"))
+    return kb
+
+def auto_cleanup_loop():
+    time.sleep(30)
+    while True:
+        try:
+            keys = fg("keys") or {}
+            now = int(time.time() * 1000)
+            deleted = 0
+            for k, v in list(keys.items()):
+                exp = v.get("expires", 0) or 0
+                if exp > 0 and now > exp + 86400000:
+                    fd(f"keys/{k}")
+                    deleted += 1
+            if deleted > 0:
+                print(f"[cleanup] {deleted} key expired dihapus")
+        except Exception as e:
+            print(f"[cleanup] error: {e}")
+        time.sleep(CLEANUP_INTERVAL)
 
 def menu(uid=None):
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -103,10 +124,12 @@ def s(m):
 @bot.callback_query_handler(func=lambda c: True)
 def cb(c):
     d = c.data; uid = c.from_user.id
+
     if d == "close":
         bot.edit_message_text("✅ Menu ditutup.", chat_id=c.message.chat.id,
             message_id=c.message.message_id)
         return bot.answer_callback_query(c.id)
+
     if d == "menu":
         if uid == ADMIN_ID:
             bot.edit_message_text("💎 *PANEL ADMIN — CIPA ONLY VIP* 💎\n\nPilih menu di bawah:",
@@ -117,30 +140,31 @@ def cb(c):
                 chat_id=c.message.chat.id, message_id=c.message.message_id,
                 parse_mode="Markdown", reply_markup=menu(uid))
         return bot.answer_callback_query(c.id)
+
     if d == "list":
-        if uid != ADMIN_ID:
-            return bot.answer_callback_query(c.id, "Akses ditolak.", show_alert=True)
+        if uid != ADMIN_ID: return bot.answer_callback_query(c.id, "Akses ditolak.", show_alert=True)
         ks = fg("keys") or {}
-        if not ks: return bot.answer_callback_query(c.id, "📂 Database kosong.", show_alert=True)
+        if not ks: return bot.answer_callback_query(c.id, "📂 Kosong.", show_alert=True)
         now = int(time.time()*1000); out = []
         for k, v in sorted(ks.items(), key=lambda x: -(x[1].get("created",0) or 0))[:40]:
             e = v.get("expires",0) or 0
             if v.get("revoked"): out.append(f"🔴 `{k}` — revoked")
             elif e>0 and now>e: out.append(f"🔴 `{k}` — expired")
-            elif v.get("hwid"):
-                out.append(f"🟡 `{k}` — {int((e-now)//86400000)}d — `{(v.get('hwid') or '-')[:12]}`")
+            elif v.get("hwid"): out.append(f"🟡 `{k}` — {int((e-now)//86400000)}d — `{(v.get('hwid') or '-')[:12]}`")
             else: out.append(f"🟢 `{k}` — siap")
         bot.edit_message_text("📋 *Database Key:*\n\n" + "\n".join(out),
             chat_id=c.message.chat.id, message_id=c.message.message_id,
             parse_mode="Markdown", reply_markup=back())
         return bot.answer_callback_query(c.id)
+
     if d == "dh":
-        if uid != ADMIN_ID:
-            return bot.answer_callback_query(c.id, "Akses ditolak.", show_alert=True)
-        bot.edit_message_text("🗑 *HAPUS KEY:* `/delete KODE`\n\n♻️ *RESET KEY:* `/resetkey KODE`",
+        if uid != ADMIN_ID: return bot.answer_callback_query(c.id, "Akses ditolak.", show_alert=True)
+        bot.edit_message_text(
+            "🗑 *HAPUS KEY:* `/delete KODE`\n♻️ *RESET KEY:* `/resetkey KODE`\n🗑️ *HAPUS SEMUA:* `/keysemua`",
             chat_id=c.message.chat.id, message_id=c.message.message_id,
             parse_mode="Markdown", reply_markup=back())
         return bot.answer_callback_query(c.id)
+
     if d.startswith("g"):
         if uid != ADMIN_ID and d != "gd":
             return bot.answer_callback_query(c.id, "Hanya 1 hari untuk user.", show_alert=True)
@@ -160,22 +184,40 @@ def cb(c):
         if uid == ADMIN_ID:
             bot.answer_callback_query(c.id, f"✅ Key: {k}", show_alert=True)
             bot.send_message(c.message.chat.id,
-                f"💎 *Key Baru Dibuat* 💎\n\n🔑 Key: `{k}`\n⏱ Durasi: {lbl}\n📌 Status: Siap Digunakan",
+                f"💎 *Key Baru* 💎\n\n🔑 `{k}`\n⏱ {lbl}",
                 parse_mode="Markdown", reply_markup=menu(ADMIN_ID))
         else:
             bot.answer_callback_query(c.id, f"✅ Key kamu: {k}", show_alert=True)
             bot.send_message(c.message.chat.id,
                 f"💎 *Key Gratis Kamu* 💎\n\n"
                 f"🔑 Key: `{k}`\n⏱ Durasi: 1 Hari\n\n"
-                f"Kirim key ini ke bot untuk aktivasi.\n\n"
+                f"Kirim key ini ke bot untuk aktivasi.\n"
                 f"⏳ Bisa ambil key lagi dalam 2 hari.",
-                parse_mode="Markdown", reply_markup=menu(uid))
+                parse_mode="Markdown", reply_markup=contact_menu())
             try:
                 bot.send_message(ADMIN_ID,
-                    f"💎 *User ambil key gratis* 💎\n\nTG ID: `{uid}`\nNama: {c.from_user.first_name}\nKey: `{k}`",
+                    f"💎 *User ambil key* 💎\n\nTG ID: `{uid}`\nNama: {c.from_user.first_name}\nKey: `{k}`",
                     parse_mode="Markdown")
             except: pass
         return
+
+    if d.startswith("delall_"):
+        if uid != ADMIN_ID: return bot.answer_callback_query(c.id, "Akses ditolak.", show_alert=True)
+        if d == "delall_no":
+            bot.edit_message_text("❌ Dibatalkan.", chat_id=c.message.chat.id,
+                message_id=c.message.message_id)
+            return bot.answer_callback_query(c.id)
+        req = urllib.request.Request(f"{FB}/keys.json", method="DELETE")
+        try:
+            urllib.request.urlopen(req, timeout=15)
+            bot.edit_message_text("🗑 *Semua key dihapus.*",
+                chat_id=c.message.chat.id, message_id=c.message.message_id,
+                parse_mode="Markdown")
+        except Exception as e:
+            bot.edit_message_text(f"❌ Gagal: {e}",
+                chat_id=c.message.chat.id, message_id=c.message.message_id)
+        return bot.answer_callback_query(c.id)
+
     if d.startswith("u_"):
         k = d[2:]
         bot.answer_callback_query(c.id, "Kirim key ke chat untuk aktivasi.")
@@ -183,13 +225,31 @@ def cb(c):
         return
     bot.answer_callback_query(c.id)
 
+@bot.message_handler(commands=["keysemua"])
+def cmd_keysemua(m):
+    if m.from_user.id != ADMIN_ID: return
+    keys = fg("keys") or {}
+    total = len(keys)
+    if total == 0:
+        return bot.reply_to(m, "📂 Firebase kosong.")
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ Ya, hapus semua", callback_data="delall_yes"),
+        types.InlineKeyboardButton("❌ Batal", callback_data="delall_no")
+    )
+    bot.reply_to(m,
+        f"⚠️ *KONFIRMASI HAPUS*\n\n"
+        f"Total key di Firebase: *{total}*\n\n"
+        f"Ini akan menghapus SEMUA key. Tidak bisa dibatalkan.",
+        parse_mode="Markdown", reply_markup=kb)
+
 @bot.message_handler(commands=["addkey"])
 def ak(m):
     if m.from_user.id != ADMIN_ID: return
     a = m.text.split(maxsplit=1)
     if len(a) < 2: return bot.reply_to(m, "Format: `/addkey 1d` / `1w` / `1m`", parse_mode="Markdown")
-    secs = dr(a[1])
-    if not secs: return bot.reply_to(m, "Durasi: 1d / 1w / 1m")
+    secs = dur(a[1])
+    if not secs: return bot.reply_to(m, "1d / 1w / 1m")
     k = mk(secs)
     if k: bot.reply_to(m, f"💎 *Key Baru* 💎\n\n🔑 `{k}`", parse_mode="Markdown", reply_markup=back())
     else: bot.reply_to(m, "❌ Gagal.")
@@ -216,7 +276,7 @@ def dk(m):
     k = a[1].strip().upper()
     if fg(f"keys/{k}"):
         fd(f"keys/{k}"); bot.reply_to(m, f"🗑 Hapus `{k}`", parse_mode="Markdown")
-    else: bot.reply_to(m, "❌ Key nggak ada.")
+    else: bot.reply_to(m, "❌ Nggak ada.")
 
 @bot.message_handler(commands=["resetkey"])
 def rk(m):
@@ -227,6 +287,28 @@ def rk(m):
     if not fg(f"keys/{k}"): return bot.reply_to(m, "❌ Nggak ada.")
     fa(f"keys/{k}", {"hwid": None, "revoked": False})
     bot.reply_to(m, f"♻️ `{k}` di-reset.", parse_mode="Markdown")
+
+@bot.message_handler(commands=["stats"])
+def st(m):
+    if m.from_user.id != ADMIN_ID: return
+    ks = fg("keys") or {}
+    now = int(time.time()*1000)
+    total = len(ks)
+    aktif = siap = expired = revoked = 0
+    for k, v in ks.items():
+        e = v.get("expires",0) or 0
+        if v.get("revoked"): revoked += 1
+        elif e>0 and now>e: expired += 1
+        elif v.get("hwid"): aktif += 1
+        else: siap += 1
+    bot.reply_to(m,
+        f"📊 *STATISTIK*\n\n"
+        f"📦 Total: `{total}`\n"
+        f"🟢 Siap: `{siap}`\n"
+        f"🟡 Aktif: `{aktif}`\n"
+        f"🔴 Expired: `{expired}`\n"
+        f"⛔ Revoked: `{revoked}`",
+        parse_mode="Markdown")
 
 def act(m, payload):
     if "_" in payload: k, dev = payload.split("_", 1)
@@ -242,7 +324,7 @@ def act(m, payload):
         return bot.reply_to(m, "⚠️ Key terikat device lain.")
     fa(f"keys/{k}", {"hwid": dev})
     expd = datetime.fromtimestamp(e/1000).strftime("%d/%m/%Y") if e else "∞"
-    bot.reply_to(m, f"💎 *Berhasil Diaktifkan* 💎\n\n🔑 `{k}`\n📱 `{dev}`\n⏳ {expd}", parse_mode="Markdown")
+    bot.reply_to(m, f"💎 *AKTIF* 💎\n\n🔑 `{k}`\n📱 `{dev}`\n⏳ {expd}", parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: True)
 def tx(m):
@@ -252,8 +334,9 @@ def tx(m):
     act(m, t.upper())
 
 if __name__ == "__main__":
-    threading.Thread(target=run_web, daemon=True).start()
+    threading.Thread(target=auto_cleanup_loop, daemon=True).start()
     print("[CIPA] bot running...")
+    print(f"[CIPA] cleanup interval: {CLEANUP_INTERVAL//3600} jam")
     while True:
         try:
             bot.infinity_polling(timeout=30, long_polling_timeout=30,
