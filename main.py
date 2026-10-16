@@ -4,7 +4,7 @@ from telebot import types
 from datetime import datetime
 
 # ============ KONFIGURASI ============
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8846832655:AAEPIpss6Tyk7K83Xy-r3W9yGW7Eq0dSIYI")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")   # token dari Railway Variables
 ADMIN_ID  = 6847073444
 FB        = os.environ.get("FB", "https://bot-key-af648-default-rtdb.asia-southeast1.firebasedatabase.app")
 COOLDOWN  = 2 * 86400
@@ -12,6 +12,9 @@ ADMIN_WA  = "6283131220798"
 ADMIN_TG  = "fa_sukamacha"
 CLEANUP_INTERVAL = 6 * 3600
 # =====================================
+
+if not BOT_TOKEN:
+    raise SystemExit("[X] BOT_TOKEN tidak ada di Railway Variables")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -44,6 +47,7 @@ def fd(p):
     except: return False
 
 def gk(): return f"CIPA-{secrets.token_hex(3).upper()}"
+
 def dur(s):
     s = s.lower().strip()
     try:
